@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Flight Briefing</title>
+<style>
+body { font-family: system-ui, sans-serif; margin: 0; background:#f5f7fb; color:#0d1b2a; }
+main { max-width: 1200px; margin: auto; padding: 2rem; }
+section { background:#fff; margin-bottom:1.5rem; border-radius:12px; padding:1.25rem; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+h2 { margin-top:0; font-size:1.2rem; letter-spacing:0.05em; text-transform:uppercase; color:#415a77; }
+h3 { margin-top:1rem; color:#1b263b; }
+table { width:100%; border-collapse:collapse; }
+th, td { padding:0.5rem; border-bottom:1px solid #e0e7ff; text-align:left; vertical-align:top; }
+.warning { border-left:4px solid #d90429; background:#ffe8ec; padding:0.75rem 1rem; margin-bottom:0.75rem; border-radius:8px; }
+.badge-row { display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.75rem; }
+.badge-row a { text-decoration:none; color:#0d1b2a; background:#edf2fb; padding:0.35rem 0.9rem; border-radius:999px; font-size:0.85rem; border:1px solid #dbe4ff; }
+.badge-row a:hover { background:#dbe4ff; }
+.airport-list { display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.5rem; margin-bottom:0.75rem; }
+.airport-list span { background:#e9ecef; border-radius:999px; padding:0.3rem 0.8rem; font-size:0.85rem; color:#1b263b; border:1px solid #dee2e6; }
+canvas { width:100%; max-width:none; height:auto; border:1px solid #dbe4ff; border-radius:8px; background:#fafcff; min-height:600px; }
+.flex { display:flex; flex-direction:column; gap:1.5rem; }
+.flex > div { width:100%; }
+.airport-weather { border:1px solid #dbe4ff; border-radius:12px; padding:1rem; margin-bottom:1rem; background:#fdfcff; }
+.airport-weather h4 { margin:0 0 0.5rem; color:#1b263b; }
+.weather-flex { display:flex; gap:1rem; flex-wrap:wrap; }
+.weather-flex > div { flex:1; min-width:260px; }
+.runway-block { border:1px solid #e0e7ff; border-radius:12px; padding:1rem; margin-top:1rem; background:#ffffff; }
+.runway-block h4 { margin:0 0 0.5rem; }
+.metar-table code { font-family:"SFMono-Regular", Menlo, monospace; white-space:pre-wrap; word-break:break-word; display:block; }
+.metar-table th:nth-child(4), .metar-table td:nth-child(4) { width:55%; }
+.total-row th, .total-row td { font-weight:700; }
+.weather-info { margin-top:0.75rem; font-weight:600; }
+.runway-table th, .runway-table td { border-bottom:1px solid #e0e7ff; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Flight Briefing</h1>
+    <div id="meta"></div>
+  </header>
+  <div id="warnings"></div>
+  <section>
+    <h2>1 — Maintenance</h2>
+    <p>Review aircraft maintenance status in logbook.</p>
+  </section>
+  <section>
+    <h2>2 — Weather</h2>
+    <div id="weather-sections"></div>
+    <div class="badge-row">
+      <a href="https://www.flugwetter.de/fw/gafor/index.htm" target="_blank" rel="noreferrer noopener">GAFOR</a>
+      <a href="https://www.flugwetter.de/fw/warn/index.htm" target="_blank" rel="noreferrer noopener">SIGMET</a>
+      <a href="https://www.flugwetter.de/fw/chartsga/skyview/index.htm" target="_blank" rel="noreferrer noopener">Surface Weather Chart</a>
+      <a href="https://www.flugwetter.de/fw/bilder/sat/index.htm?type=ir_rgb_eu" target="_blank" rel="noreferrer noopener">Satellite Europe</a>
+      <a href="https://www.flugwetter.de/fw/bilder/rad/index.htm?type=rx" target="_blank" rel="noreferrer noopener">Radar DE</a>
+      <a href="https://www.flugwetter.de/fw/bilder/rad/index.htm?type=eu" target="_blank" rel="noreferrer noopener">Radar EU</a>
+      <a href="https://apps.apple.com/app/windy-wind-weather-forecast/id1094311790" target="_blank" rel="noreferrer noopener">Windy (iOS)</a>
+    </div>
+  </section>
+  <section>
+    <h2>3 — NOTAMs</h2>
+    <p>Check NOTAMs for departure, destination and alternates.</p>
+  </section>
+  <section>
+    <h2>4 — Fuel Planning</h2>
+    <div id="fuel-table"></div>
+  </section>
+  <section>
+    <h2>5 — Mass & Balance</h2>
+    <div class="flex">
+      <div>
+        <div id="mass-table"></div>
+      </div>
+      <div>
+        <canvas id="cg-chart" width="1500" height="1000"></canvas>
+      </div>
+    </div>
+  </section>
+  <section>
+    <h2>6 — Performance</h2>
+    <div id="performance"></div>
+    <p>Reminders: verify takeoff and landing distances.</p>
+  </section>
+  <section>
+    <h2>7 — Charts</h2>
+    <p>Review charts for departure, destination and alternates.</p>
+  </section>
+</main>
+<script>
+const data = {"inputs": {"departure_icao": "EDFV", "airport_name": "Worms Airfield", "airport_elevation_ft": 295.0, "runways": [{"runway": "06", "surface": "asphalt", "tora": 800.0, "lda": 800.0}, {"runway": "06", "surface": "grass", "tora": 920.0, "lda": 920.0}, {"runway": "24", "surface": "asphalt", "tora": 800.0, "lda": 800.0}, {"runway": "24", "surface": "grass", "tora": 920.0, "lda": 920.0}], "airports": [{"icao": "EDFV", "name": "Worms Airfield", "elevation_ft": 295.0, "runways": [{"runway": "06", "surface": "asphalt", "tora": 800.0, "lda": 800.0}, {"runway": "06", "surface": "grass", "tora": 920.0, "lda": 920.0}, {"runway": "24", "surface": "asphalt", "tora": 800.0, "lda": 800.0}, {"runway": "24", "surface": "grass", "tora": 920.0, "lda": 920.0}]}], "flight_type": "pattern", "estimated_time_hours": 1.0, "stopovers": [], "passengers": [], "baggage_weight": 0.0, "pilot_name": "Francois", "pilot_weight": 80.0, "pilot_height": 178.0}, "weather": {"metars": [{"icaoId": "EDFM", "receiptTime": "2026-03-02T21:56:14.540Z", "obsTime": 1772488200, "reportTime": "2026-03-02T22:00:00.000Z", "temp": 5, "dewp": 2, "wdir": 0, "wspd": 0, "visib": "6+", "altim": 1024, "qcField": 2, "metarType": "METAR", "rawOb": "METAR EDFM 022150Z AUTO 00000KT 9999 // NCD 05/02 Q1024", "lat": 49.474, "lon": 8.515, "elev": 94, "name": "Mannheim City Arpt, BW, DE", "cover": "CLR", "clouds": [], "fltCat": "VFR"}, {"icaoId": "EDDF", "receiptTime": "2026-03-02T21:53:21.851Z", "obsTime": 1772488200, "reportTime": "2026-03-02T22:00:00.000Z", "temp": 7, "dewp": 3, "wdir": 10, "wspd": 3, "visib": "6+", "altim": 1024, "qcField": 18, "metarType": "METAR", "rawOb": "METAR EDDF 022150Z AUTO 01003KT 350V080 CAVOK 07/03 Q1024 NOSIG", "lat": 50.045, "lon": 8.598, "elev": 113, "name": "Frankfurt/Main Arpt, HE, DE", "cover": "CAVOK", "clouds": [], "fltCat": "VFR"}, {"icaoId": "ETOU", "receiptTime": "2026-03-02T21:10:15.812Z", "obsTime": 1772484900, "reportTime": "2026-03-02T21:00:00.000Z", "temp": 5.8, "dewp": 1.9, "wdir": 0, "wspd": 0, "visib": "6+", "altim": 1023.5, "slp": 1023.9, "qcField": 6, "presTend": 1.1, "metarType": "METAR", "rawOb": "METAR ETOU 022055Z AUTO 00000KT 9999 CLR 06/02 A3022 RMK AO2 SLP239 T00580019 52011", "lat": 50.048, "lon": 8.329, "elev": 141, "name": "Wiesbaden , HE, DE", "cover": "CLR", "clouds": [], "fltCat": "VFR"}], "taf": [{"icaoId": "EDFM", "dbPopTime": "2026-03-02T17:25:23.213Z", "bulletinTime": "2026-03-02T17:00:00.000Z", "issueTime": "2026-03-02T17:00:00.000Z", "validTimeFrom": 1772474400, "validTimeTo": 1772485200, "rawTAF": "TAF EDFM 021700Z 0218/0221 VRB03KT CAVOK", "mostRecent": 1, "remarks": "", "lat": 49.474, "lon": 8.515, "elev": 94, "prior": 4, "name": "Mannheim City Arpt", "fcsts": [{"timeFrom": 1772474400, "timeTo": 1772485200, "timeBec": null, "fcstChange": null, "probability": null, "wdir": "VRB", "wspd": 3, "wgst": null, "wshearHgt": null, "wshearDir": null, "wshearSpd": null, "visib": "6+", "altim": null, "vertVis": null, "wxString": "NSW", "notDecoded": null, "clouds": [{"cover": "NSC", "base": null, "type": null}], "icgTurb": [], "temp": []}]}, {"icaoId": "EDDF", "dbPopTime": "2026-03-02T17:25:23.244Z", "bulletinTime": "2026-03-02T17:00:00.000Z", "issueTime": "2026-03-02T17:00:00.000Z", "validTimeFrom": 1772474400, "validTimeTo": 1772582400, "rawTAF": "TAF EDDF 021700Z 0218/0324 07004KT CAVOK", "mostRecent": 1, "remarks": "", "lat": 50.045, "lon": 8.598, "elev": 113, "prior": 1, "name": "Frankfurt/Main Arpt", "fcsts": [{"timeFrom": 1772474400, "timeTo": 1772582400, "timeBec": null, "fcstChange": null, "probability": null, "wdir": 70, "wspd": 4, "wgst": null, "wshearHgt": null, "wshearDir": null, "wshearSpd": null, "visib": "6+", "altim": null, "vertVis": null, "wxString": "NSW", "notDecoded": null, "clouds": [{"cover": "NSC", "base": null, "type": null}], "icgTurb": [], "temp": []}]}, {"icaoId": "ETOU", "dbPopTime": "2026-03-02T19:04:11.021Z", "bulletinTime": "2026-03-02T19:04:00.000Z", "issueTime": "2026-03-02T19:00:00.000Z", "validTimeFrom": 1772478000, "validTimeTo": 1772586000, "rawTAF": "TAF ETOU 021900Z 0219/0401 VRB06KT 9999 SKC QNH3026INS BECMG 0304/0305 09003KT 8000 BR FEW000 QNH3028INS BECMG 0307/0308 VRB06KT 9999 NSW SKC QNH3030INS BECMG 0321/0322 VRB03KT 9999 SKC QNH3035INS TX16/0313Z TN01/0306Z", "mostRecent": 1, "remarks": "", "lat": 50.048, "lon": 8.329, "elev": 141, "prior": 6, "name": "Wiesbaden ", "fcsts": [{"timeFrom": 1772478000, "timeTo": 1772510400, "timeBec": null, "fcstChange": null, "probability": null, "wdir": "VRB", "wspd": 6, "wgst": null, "wshearHgt": null, "wshearDir": null, "wshearSpd": null, "visib": "6+", "altim": 1025, "vertVis": null, "wxString": null, "notDecoded": null, "clouds": [{"cover": "SKC", "base": null, "type": null}], "icgTurb": [], "temp": []}, {"timeFrom": 1772510400, "timeTo": 1772521200, "timeBec": 1772514000, "fcstChange": "BECMG", "probability": null, "wdir": 90, "wspd": 3, "wgst": null, "wshearHgt": null, "wshearDir": null, "wshearSpd": null, "visib": 4.97, "altim": 1025, "vertVis": null, "wxString": "BR", "notDecoded": null, "clouds": [{"cover": "FEW", "base": null, "type": null}], "icgTurb": [], "temp": []}, {"timeFrom": 1772521200, "timeTo": 1772571600, "timeBec": 1772524800, "fcstChange": "BECMG", "probability": null, "wdir": "VRB", "wspd": 6, "wgst": null, "wshearHgt": null, "wshearDir": null, "wshearSpd": null, "visib": "6+", "altim": 1026, "vertVis": null, "wxString": "NSW", "notDecoded": null, "clouds": [{"cover": "SKC", "base": null, "type": null}], "icgTurb": [], "temp": []}, {"timeFrom": 1772571600, "timeTo": 1772586000, "timeBec": 1772575200, "fcstChange": "BECMG", "probability": null, "wdir": "VRB", "wspd": 3, "wgst": null, "wshearHgt": null, "wshearDir": null, "wshearSpd": null, "visib": "6+", "altim": 1028, "vertVis": null, "wxString": "NSW", "notDecoded": null, "clouds": [{"cover": "SKC", "base": null, "type": null}], "icgTurb": [], "temp": []}]}], "lowest_qnh": 1023.4, "oat_c": 6.0, "wind": {"direction": 0.0, "speed_kt": 0.0, "gust_kt": null, "variable": false, "var_from": null, "var_to": null}, "weather_summary": "METAR EDFM 022150Z AUTO 00000KT 9999 // NCD 05/02 Q1024\nMETAR EDDF 022150Z AUTO 01003KT 350V080 CAVOK 07/03 Q1024 NOSIG\nMETAR ETOU 022055Z AUTO 00000KT 9999 CLR 06/02 A3022 RMK AO2 SLP239 T00580019 52011", "nearby_airports": [{"ident": "EDFV", "name": "Worms Airfield", "distance_km": 0.0}, {"ident": "ETOR", "name": "Coleman Army Air Field", "distance_km": 8.4}, {"ident": "EDGL", "name": "Ludwigshafen Accident Hospital Heliport", "distance_km": 13.5}, {"ident": "EDGZ", "name": "Weinheim/Bergstra\u00dfe Airfield", "distance_km": 18.1}, {"ident": "EDFM", "name": "Mannheim-City Airport", "distance_km": 18.2}, {"ident": "EDEP", "name": "Heppenheim Glider Field", "distance_km": 18.5}, {"ident": "EDRF", "name": "Bad D\u00fcrkheim Airfield", "distance_km": 19.4}, {"ident": "EDGP", "name": "Oppenheim Airfield", "distance_km": 26.1}, {"ident": "EDEH", "name": "Herrenteich Airfield", "distance_km": 30.4}, {"ident": "EDRL", "name": "Flugplatz Lachen-Speyerdorf", "distance_km": 32.8}, {"ident": "EDFX", "name": "Hockenheim Airfield", "distance_km": 33.4}, {"ident": "EDRY", "name": "Speyer Airfield", "distance_km": 34.1}, {"ident": "EDGX", "name": "Walldorf Airfield", "distance_km": 39.8}, {"ident": "ETED", "name": "Kaiserslautern Depot Army Heliport", "distance_km": 42.1}, {"ident": "EDFZ", "name": "Mainz-Finthen Airfield", "distance_km": 43.1}, {"ident": "EDFE", "name": "Frankfurt-Egelsbach Airport", "distance_km": 43.9}, {"ident": "EDFO", "name": "Michelstadt-Odenwald Airfield", "distance_km": 44.2}, {"ident": "EDEL", "name": "Langenlonsheim Airfield", "distance_km": 47.1}, {"ident": "EDDF", "name": "Frankfurt Main Airport", "distance_km": 48.6}, {"ident": "ETOU", "name": "Wiesbaden Army Airfield", "distance_km": 49.3}], "metar_entries": [{"station": "EDFM", "distance_km": 18.2, "obs_time": 1772488200, "raw": "METAR EDFM 022150Z AUTO 00000KT 9999 // NCD 05/02 Q1024"}, {"station": "EDDF", "distance_km": 48.6, "obs_time": 1772488200, "raw": "METAR EDDF 022150Z AUTO 01003KT 350V080 CAVOK 07/03 Q1024 NOSIG"}, {"station": "ETOU", "distance_km": 49.3, "obs_time": 1772484900, "raw": "METAR ETOU 022055Z AUTO 00000KT 9999 CLR 06/02 A3022 RMK AO2 SLP239 T00580019 52011"}]}, "fuel": {"legs": 1, "rolling_liters": 3, "rolling_label": "1 x Leg", "trip_liters": 27.0, "trip_label": "1.0 h @ 22 L/h", "reserve_liters": 11, "reserve_label": "11 L as in SOP", "total_liters": 41.0, "fuel_mass": 29.5}, "mass_balance": {"stations": [{"label": "Empty Weight", "mass": 514.5, "lever": 0.439, "moment": 225.8655}, {"label": "Pilot (Francois)", "mass": 80.0, "lever": 0.58, "moment": 46.4}, {"label": "Fuel", "mass": 29.5, "lever": 0.325, "moment": 9.5875}], "total_mass": 624.0, "total_moment": 281.9, "cg": 0.452, "inside_envelope": true, "line_position": 0.280539772727273, "envelope": [{"mass": 560, "moment": 240}, {"mass": 560, "moment": 290}, {"mass": 750, "moment": 390}, {"mass": 750, "moment": 320}]}, "performance": {"pressure_altitude_ft": -17.0, "density_altitude_ft": -1101.0, "isa_temp_c": 15.0, "delta_isa_c": -9.0}, "warnings": [], "airport_sections": [{"icao": "EDFV", "name": "Worms Airfield", "role": "Departure", "elevation_ft": 295.0, "runways": [{"runway": "06", "surface": "asphalt", "tora": 800.0, "lda": 800.0}, {"runway": "06", "surface": "grass", "tora": 920.0, "lda": 920.0}, {"runway": "24", "surface": "asphalt", "tora": 800.0, "lda": 800.0}, {"runway": "24", "surface": "grass", "tora": 920.0, "lda": 920.0}], "weather": {"metar_entries": [{"station": "EDFM", "distance_km": 18.2, "obs_time": 1772488200, "raw": "METAR EDFM 022150Z AUTO 00000KT 9999 // NCD 05/02 Q1024"}, {"station": "EDDF", "distance_km": 48.6, "obs_time": 1772488200, "raw": "METAR EDDF 022150Z AUTO 01003KT 350V080 CAVOK 07/03 Q1024 NOSIG"}, {"station": "ETOU", "distance_km": 49.3, "obs_time": 1772484900, "raw": "METAR ETOU 022055Z AUTO 00000KT 9999 CLR 06/02 A3022 RMK AO2 SLP239 T00580019 52011"}], "taf_entries": [{"station": "EDFM", "issue": "2026-03-02T17:00:00.000Z", "raw": "TAF EDFM 021700Z 0218/0221 VRB03KT CAVOK"}, {"station": "EDDF", "issue": "2026-03-02T17:00:00.000Z", "raw": "TAF EDDF 021700Z 0218/0324 07004KT CAVOK"}, {"station": "ETOU", "issue": "2026-03-02T19:00:00.000Z", "raw": "TAF ETOU 021900Z 0219/0401 VRB06KT 9999 SKC QNH3026INS BECMG 0304/0305 09003KT 8000 BR FEW000 QNH3028INS BECMG 0307/0308 VRB06KT 9999 NSW SKC QNH3030INS BECMG 0321/0322 VRB03KT 9999 SKC QNH3035INS TX16/0313Z TN01/0306Z"}], "lowest_qnh": 1023.4, "oat_c": 6.0, "wind": {"direction": 0.0, "speed_kt": 0.0, "gust_kt": null, "variable": false, "var_from": null, "var_to": null}, "primary_station": "EDFM", "primary_distance_km": 18.2}}], "generation_time": "2026-03-02T21:56:32.256336+00:00"};
+const airportSections = data.airport_sections || [];
+const qs = s => document.querySelector(s);
+const toNumber = val => (val === null || val === undefined ? null : Number(val));
+const normalizeDegrees = deg => {
+  const num = toNumber(deg);
+  if (num === null || Number.isNaN(num)) return null;
+  let normalized = num % 360;
+  if (normalized < 0) normalized += 360;
+  return normalized;
+};
+const angleDiff = (a, b) => {
+  const na = normalizeDegrees(a);
+  const nb = normalizeDegrees(b);
+  if (na === null || nb === null) return null;
+  let diff = Math.abs(na - nb);
+  return diff > 180 ? 360 - diff : diff;
+};
+const runwayHeading = runwayId => {
+  if (!runwayId) return null;
+  const match = runwayId.match(/(\d{2})/);
+  if (!match) return null;
+  let value = parseInt(match[1], 10);
+  if (Number.isNaN(value)) return null;
+  if (value === 36) value = 0;
+  return value * 10;
+};
+const runwayNumber = runwayId => {
+  if (!runwayId) return null;
+  const match = runwayId.match(/(\d{2})/);
+  if (!match) return null;
+  let value = parseInt(match[1], 10);
+  if (Number.isNaN(value)) return null;
+  if (value === 0) value = 36;
+  return value;
+};
+const runwayPairLabel = runwayId => {
+  const number = runwayNumber(runwayId);
+  if (number === null) return runwayId || 'RWY';
+  let reciprocal = number + 18;
+  if (reciprocal > 36) reciprocal -= 36;
+  const parts = [number, reciprocal].sort((a, b) => a - b).map(n => String(n).padStart(2, '0'));
+  return `${parts[0]}/${parts[1]}`;
+};
+const groupRunwaysByPair = runways => {
+  const map = new Map();
+  runways.forEach(rw => {
+    const label = runwayPairLabel(rw.runway);
+    const surfaceKey = (rw.surface || 'unknown').toLowerCase();
+    const key = `${label}__${surfaceKey}`;
+    if (!map.has(key)) {
+      map.set(key, { pairLabel: label, surface: rw.surface || 'unknown', members: [] });
+    }
+    map.get(key).members.push(rw);
+  });
+  return Array.from(map.values()).map(entry => {
+    entry.members.sort((a, b) => {
+      const aNum = runwayNumber(a.runway) ?? 0;
+      const bNum = runwayNumber(b.runway) ?? 0;
+      return aNum - bNum;
+    });
+    return entry;
+  }).sort((a, b) => {
+    if (a.pairLabel === b.pairLabel) {
+      return (a.surface || '').localeCompare(b.surface || '');
+    }
+    return a.pairLabel.localeCompare(b.pairLabel);
+  });
+};
+const componentFor = (speed, heading, direction) => {
+  const diff = angleDiff(heading, direction);
+  if (diff === null) return null;
+  return speed * Math.cos((diff * Math.PI) / 180);
+};
+const worstComponentForSpeed = (speed, heading, wind) => {
+  const spd = toNumber(speed);
+  if (spd === null || Number.isNaN(spd) || heading === null || !wind) return null;
+  const dirs = [];
+  const nominal = normalizeDegrees(wind.direction);
+  if (nominal !== null) dirs.push(nominal);
+  const varFrom = normalizeDegrees(wind.var_from);
+  const varTo = normalizeDegrees(wind.var_to);
+  if (varFrom !== null && varTo !== null) {
+    dirs.push(varFrom, varTo);
+  }
+  if (!dirs.length) {
+    return wind.variable ? -spd : null;
+  }
+  let worstAngle = -1;
+  let worstComponent = null;
+  dirs.forEach(dir => {
+    const diff = angleDiff(heading, dir);
+    if (diff === null) return;
+    if (diff > worstAngle) {
+      worstAngle = diff;
+      worstComponent = componentFor(spd, heading, dir);
+    }
+  });
+  return worstComponent;
+};
+const formatComponentText = (base, gust) => {
+  if (base === null || base === undefined || Number.isNaN(Number(base))) return 'N/A';
+  const baseNum = Number(base);
+  const magnitude = Math.abs(baseNum);
+  const baseLabel = magnitude < 0.1 ? 'Calm' : baseNum >= 0 ? `Head ${magnitude.toFixed(1)} kt` : `Tail ${magnitude.toFixed(1)} kt`;
+  if (gust === null || gust === undefined || Number.isNaN(Number(gust))) {
+    return baseLabel;
+  }
+  const gustNum = Number(gust);
+  const gustMag = Math.abs(gustNum);
+  const gustLabel = gustMag < 0.1 ? 'Calm' : gustNum >= 0 ? `Head ${gustMag.toFixed(1)} kt` : `Tail ${gustMag.toFixed(1)} kt`;
+  return gustLabel === 'Calm' ? baseLabel : `${baseLabel} (G ${gustLabel})`;
+};
+const describeWind = wind => {
+  if (!wind) return 'Wind: N/A';
+  const baseSpeed = toNumber(wind.speed_kt);
+  const gustSpeed = toNumber(wind.gust_kt);
+  if (baseSpeed === null && gustSpeed === null) return 'Wind: N/A';
+  const directionText = wind.direction === null || wind.direction === undefined
+    ? 'VRB'
+    : `${String(Math.round(toNumber(wind.direction) ?? 0)).padStart(3, '0')}°`;
+  let text = `Wind: ${directionText}/`;
+  text += baseSpeed !== null ? `${baseSpeed.toFixed(0)} kt` : '—';
+  if (gustSpeed !== null) {
+    text += ` (G${gustSpeed.toFixed(0)} kt)`;
+  }
+  if (wind.var_from != null && wind.var_to != null) {
+    const fromTxt = String(Math.round(toNumber(wind.var_from) ?? 0)).padStart(3, '0');
+    const toTxt = String(Math.round(toNumber(wind.var_to) ?? 0)).padStart(3, '0');
+    text += ` ${fromTxt}°-${toTxt}°`;
+  }
+  return text;
+};
+const describeField = (members, field) => {
+  const values = members.map(m => m[field]).filter(v => v !== undefined && v !== null);
+  if (!values.length) return 'N/A';
+  const unique = [...new Set(values.map(v => `${v}`))];
+  if (unique.length === 1) {
+    return `${unique[0]} m`;
+  }
+  return members.map(m => `${m.runway}: ${m[field] ?? 'N/A'} m`).join(' / ');
+};
+const describeComponents = (members, wind) => {
+  if (!wind) return 'N/A';
+  const baseWindSpeed = toNumber(wind.speed_kt);
+  const gustWindSpeed = toNumber(wind.gust_kt);
+  const rows = members.map(m => {
+    const heading = runwayHeading(m.runway);
+    const baseComponent = worstComponentForSpeed(baseWindSpeed, heading, wind);
+    const gustComponent = gustWindSpeed !== null ? worstComponentForSpeed(gustWindSpeed, heading, wind) : null;
+    return { runway: m.runway, text: formatComponentText(baseComponent, gustComponent) };
+  });
+  const unique = [...new Set(rows.map(r => r.text))];
+  if (unique.length === 1) {
+    return unique[0];
+  }
+  return rows.map(r => `${r.runway}: ${r.text}`).join(' / ');
+};
+const meta = `Departure: ${data.inputs.departure_icao} (${data.inputs.airport_name}) · Flight type: ${data.inputs.flight_type} · ETA: ${data.inputs.estimated_time_hours}h · Generated ${new Date(data.generation_time).toLocaleString()}`;
+qs('#meta').textContent = meta;
+const warnings = data.warnings || [];
+const warnEl = qs('#warnings');
+warnings.forEach(msg => {
+  const div = document.createElement('div');
+  div.className = 'warning';
+  div.textContent = msg;
+  warnEl.appendChild(div);
+});
+const weatherContainer = qs('#weather-sections');
+if (!airportSections.length) {
+  weatherContainer.innerHTML = '<div class="warning">No airport weather data available.</div>';
+} else {
+  weatherContainer.innerHTML = airportSections.map((section, index) => renderWeatherSection(section, index)).join('');
+}
+const fuel = data.fuel;
+qs('#fuel-table').innerHTML = `
+  <table>
+    <tr><th>Rolling fuel (${fuel.rolling_label})</th><td>${fuel.rolling_liters} L</td></tr>
+    <tr><th>Trip fuel (${fuel.trip_label})</th><td>${fuel.trip_liters} L</td></tr>
+    <tr><th>Reserve (${fuel.reserve_label})</th><td>${fuel.reserve_liters} L</td></tr>
+    <tr class="total-row"><th>Total fuel</th><td><strong>${fuel.total_liters} L</strong></td></tr>
+  </table>`;
+const mass = data.mass_balance;
+let rows = mass.stations.map(st => `<tr><td>${st.label}</td><td>${st.mass.toFixed(1)}</td><td>${st.lever.toFixed(3)}</td><td>${st.moment.toFixed(1)}</td></tr>`).join('');
+rows += `<tr><th>Total</th><th>${mass.total_mass}</th><th></th><th>${mass.total_moment}</th></tr>`;
+qs('#mass-table').innerHTML = `<table><tr><th>Station</th><th>Mass (kg)</th><th>Lever (m)</th><th>Moment (kg·m)</th></tr>${rows}</table>`;
+const cgInfo = document.createElement('p');
+cgInfo.textContent = `CG: ${mass.cg.toFixed(3)} m`;
+qs('#mass-table').appendChild(cgInfo);
+const perf = data.performance;
+const formatDelta = value => {
+  if (value === null || value === undefined) return 'N/A';
+  const num = Number(value);
+  if (Number.isNaN(num)) return 'N/A';
+  return `${num > 0 ? '+' : ''}${num.toFixed(1)}`;
+};
+const primaryWeather = data.weather || {};
+const primaryWind = primaryWeather.wind || null;
+const deltaIsa = formatDelta(perf.delta_isa_c);
+const perfInfo = `QNH: ${primaryWeather.lowest_qnh ?? 'N/A'} hPa · Field elevation: ${data.inputs.airport_elevation_ft} ft · Temperature: ${primaryWeather.oat_c ?? 'N/A'} °C · ${describeWind(primaryWind)} · ΔISA: ${deltaIsa} °C`;
+const perfTable = `<table>
+  <tr><th>Pressure altitude (ft)</th><td>${perf.pressure_altitude_ft ?? 'N/A'}</td></tr>
+  <tr><th>Density altitude (ft)</th><td>${perf.density_altitude_ft ?? 'N/A'}</td></tr>
+</table>`;
+const runwayHtml = airportSections.length
+  ? airportSections.map((section, index) => renderRunwaySection(section, index)).join('')
+  : '<div class="warning">No runway data stored.</div>';
+qs('#performance').innerHTML = `<p>${perfInfo}</p>${perfTable}${runwayHtml}`;
+function buildMetarTable(entries) {
+  let rows = '<tr><th>Station</th><th>Distance (km)</th><th>Observed</th><th>METAR</th></tr>';
+  entries.forEach(entry => {
+    rows += `<tr><td>${entry.station || 'N/A'}</td><td>${entry.distance_km ?? '—'}</td><td>${entry.obs_time || 'N/A'}</td><td><code>${entry.raw || ''}</code></td></tr>`;
+  });
+  return `<table class="metar-table">${rows}</table>`;
+}
+function buildTafTable(entries) {
+  let rows = '<tr><th>Station</th><th>Issued</th><th>TAF</th></tr>';
+  entries.forEach(entry => {
+    rows += `<tr><td>${entry.station || 'N/A'}</td><td>${entry.issue || 'N/A'}</td><td><code>${entry.raw || ''}</code></td></tr>`;
+  });
+  return `<table class="metar-table">${rows}</table>`;
+}
+function renderWeatherSection(section, index) {
+  const roleLabel = section.role || (index === 0 ? 'Departure' : `Stop ${index}`);
+  const metarEntries = (section.weather && section.weather.metar_entries) || [];
+  const tafEntries = (section.weather && section.weather.taf_entries) || [];
+  const qnhText = section.weather && section.weather.lowest_qnh !== null && section.weather.lowest_qnh !== undefined
+    ? section.weather.lowest_qnh
+    : 'N/A';
+  const oatText = section.weather && section.weather.oat_c !== null && section.weather.oat_c !== undefined
+    ? section.weather.oat_c
+    : 'N/A';
+  const metarTable = metarEntries.length ? buildMetarTable(metarEntries) : '<div class="warning">No METAR data available.</div>';
+  const tafTable = tafEntries.length ? buildTafTable(tafEntries) : '<div class="warning">No TAF data available.</div>';
+  return `
+    <div class="airport-weather">
+      <h4>${section.icao} — ${section.name} (${roleLabel})</h4>
+      <p class="weather-info">QNH: ${qnhText} hPa · OAT: ${oatText} °C · ${describeWind(section.weather ? section.weather.wind : null)}</p>
+      <div class="weather-flex">
+        <div>${metarTable}</div>
+        <div>${tafTable}</div>
+      </div>
+    </div>`;
+}
+function renderRunwaySection(section, index) {
+  const runways = section.runways || [];
+  const roleLabel = section.role || (index === 0 ? 'Departure' : `Stop ${index}`);
+  if (!runways.length) {
+    return `<div class="runway-block"><h4>${section.icao} — ${section.name} (${roleLabel})</h4><p>No runway data stored.</p></div>`;
+  }
+  const grouped = groupRunwaysByPair(runways);
+  const wind = section.weather ? section.weather.wind : null;
+  let runwayRows = '<tr><th>Runway</th><th>Surface</th><th>TORA (m)</th><th>LDA (m)</th><th>Head/Tailwind</th></tr>';
+  grouped.forEach(entry => {
+    runwayRows += `<tr><td>${entry.pairLabel}</td><td>${entry.surface}</td><td>${describeField(entry.members, 'tora')}</td><td>${describeField(entry.members, 'lda')}</td><td>${describeComponents(entry.members, wind)}</td></tr>`;
+  });
+  return `
+    <div class="runway-block">
+      <h4>${section.icao} — ${section.name} (${roleLabel})</h4>
+      <p class="weather-info">${describeWind(wind)}</p>
+      <table class="runway-table">${runwayRows}</table>
+    </div>`;
+}
+const canvas = document.getElementById('cg-chart');
+const ctx = canvas.getContext('2d');
+const poly = data.mass_balance.envelope || [
+  {mass:560,moment:240},{mass:560,moment:290},{mass:750,moment:390},{mass:750,moment:320}
+];
+const points = poly.concat([poly[0]]);
+const massMin = 550;
+const massMax = 760;
+const momentMin = 230;
+const momentMax = 420;
+const margin = { left: 70, right: 40, top: 30, bottom: 60 };
+const usableWidth = canvas.width - margin.left - margin.right;
+const usableHeight = canvas.height - margin.top - margin.bottom;
+const unitSize = Math.min(usableWidth / (momentMax - momentMin), usableHeight / (massMax - massMin));
+const plotWidth = unitSize * (momentMax - momentMin);
+const plotHeight = unitSize * (massMax - massMin);
+const originX = margin.left + (usableWidth - plotWidth) / 2;
+const originY = margin.top + plotHeight;
+const scaleX = moment => originX + (moment - momentMin) * unitSize;
+const scaleY = mass => originY - (mass - massMin) * unitSize;
+ctx.clearRect(0,0,canvas.width,canvas.height);
+ctx.strokeStyle = '#edf2fb';
+ctx.lineWidth = 1;
+for (let moment = momentMin; moment <= momentMax; moment += 10) {
+  const x = scaleX(moment);
+  ctx.beginPath();
+  ctx.moveTo(x, originY);
+  ctx.lineTo(x, originY - plotHeight);
+  ctx.stroke();
+}
+for (let massValue = massMin; massValue <= massMax; massValue += 10) {
+  const y = scaleY(massValue);
+  ctx.beginPath();
+  ctx.moveTo(originX, y);
+  ctx.lineTo(originX + plotWidth, y);
+  ctx.stroke();
+}
+ctx.strokeStyle = '#8d99ae';
+ctx.lineWidth = 1.5;
+ctx.strokeRect(originX, originY - plotHeight, plotWidth, plotHeight);
+ctx.fillStyle = '#1b263b';
+ctx.font = '16px system-ui';
+const momentTicks = [];
+for (let val = momentMin; val <= momentMax; val += 10) momentTicks.push(val);
+const massTicks = [];
+for (let val = massMin; val <= massMax; val += 10) massTicks.push(val);
+momentTicks.forEach(val => {
+  const x = scaleX(val);
+  ctx.fillText(val.toString(), x - 18, originY + 28);
+  ctx.fillText(val.toString(), x - 18, originY - plotHeight - 12);
+});
+massTicks.forEach(val => {
+  const y = scaleY(val);
+  ctx.fillText(val.toString(), originX - 60, y + 6);
+  ctx.fillText(val.toString(), originX + plotWidth + 20, y + 6);
+});
+ctx.fillStyle = '#0d1b2a';
+ctx.font = '20px system-ui';
+ctx.fillText('Moment (kg·m)', canvas.width / 2 - 80, canvas.height - 20);
+ctx.save();
+ctx.translate(margin.left / 2, canvas.height / 2);
+ctx.rotate(-Math.PI / 2);
+ctx.fillText('Mass (kg)', 0, 0);
+ctx.restore();
+ctx.strokeStyle = '#415a77';
+ctx.lineWidth = 2;
+ctx.beginPath();
+ctx.moveTo(scaleX(points[0].moment), scaleY(points[0].mass));
+for (let i=1;i<points.length;i++) {
+  ctx.lineTo(scaleX(points[i].moment), scaleY(points[i].mass));
+}
+ctx.closePath();
+ctx.stroke();
+ctx.fillStyle = 'rgba(65,90,119,0.15)';
+ctx.fill();
+ctx.fillStyle = mass.inside_envelope ? '#2b9348' : '#d90429';
+const cgX = scaleX(mass.total_moment);
+const cgY = scaleY(mass.total_mass);
+ctx.beginPath();
+ctx.arc(cgX, cgY, 6, 0, Math.PI*2);
+ctx.fill();
+</script>
+</body>
+</html>
