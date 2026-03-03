@@ -1021,7 +1021,8 @@ def main() -> None:
     inputs = collect_inputs(conn)
     data = build_briefing(inputs)
     inject_into_template(data)
-    print("Done. Open the HTML in a browser to review and capture screenshots.")
+    print("Done.")
+    print("BRIEFING_URL: https://fradpnt.github.io/flight_briefing.oc/")
 
 
 DEFAULT_TEMPLATE = """<!DOCTYPE html>
