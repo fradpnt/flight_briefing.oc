@@ -987,6 +987,32 @@ def inject_into_template(data: BriefingData) -> None:
     OUTPUT_HTML.write_text(html, encoding="utf-8")
     GHPAGES_HTML.write_text(html, encoding="utf-8")
     print("Briefing written to {output} and published to {gh}".format(output=OUTPUT_HTML, gh=GHPAGES_HTML))
+    _deploy_to_github()
+
+
+def _deploy_to_github() -> None:
+    """Commit docs/index.html and push to origin main for GitHub Pages."""
+    import subprocess, shutil
+    if not shutil.which("git"):
+        print("[deploy] git not found, skipping GitHub Pages deploy.")
+        return
+    repo = REPO_ROOT
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    cmds = [
+        ["git", "-C", str(repo), "add", "docs/index.html"],
+        ["git", "-C", str(repo), "commit", "-m", f"briefing: auto-deploy {ts}"],
+        ["git", "-C", str(repo), "push", "origin", "main"],
+    ]
+    for cmd in cmds:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            # commit returns 1 if nothing to commit — that's fine
+            if "nothing to commit" in result.stdout + result.stderr:
+                print("[deploy] nothing new to commit.")
+                return
+            print(f"[deploy] warning: {' '.join(cmd[3:])} → {result.stderr.strip()}")
+            return
+    print(f"[deploy] ✓ Pushed to GitHub Pages — https://fradpnt.github.io/flight_briefing.oc/")
 
 
 def main() -> None:
